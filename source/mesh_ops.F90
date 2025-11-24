@@ -90,6 +90,18 @@ subroutine mesh_setup(mesh, time, prim, cons)
     dr     = (mesh%params%r_max - mesh%params%r_min)         / dble(n_r)
     dtheta = (mesh%params%theta_max - mesh%params%theta_min) / dble(n_theta)
 
+    !-------------------------------------------------------------------
+    ! Avoid having the innermost radial face exactly at r = 0.
+    ! When the inner face length is zero, a uniform static state
+    ! experiences an unbalanced pressure force (non-zero flux on the
+    ! outer face, zero on the inner face), which injects spurious
+    ! velocity from the pole. Shift the radial origin outward by half
+    ! the initial spacing so both faces of the first cell have finite
+    ! length and a uniform state remains in equilibrium.
+    !-------------------------------------------------------------------
+    mesh%params%r_min = 0.5d0 * dr
+    dr = (mesh%params%r_max - mesh%params%r_min) / dble(n_r)
+
     !---------------------------------------------------------------
     ! Calculate geometric parameters
     !---------------------------------------------------------------
