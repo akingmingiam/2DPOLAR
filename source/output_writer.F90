@@ -7,7 +7,7 @@
 !===============================================================================
 
 module output_writer
-    use mesh_types,    only : PolarMesh, BC
+    use mesh_types,    only : PolarMesh, BC, EQ
     use flow_fields,   only : PrimitiveVariables
     implicit none
     private
@@ -94,7 +94,7 @@ subroutine write_primitive_tecplot(t, step, output_step, dir, mesh, prim)
     ! Write Tecplot header
     !----------------------------------------
     write(unit,*) 'TITLE="Primitive Fields"'
-    write(unit,*) 'VARIABLES="X","Y","Density","Pressure","U","V"'
+    write(unit,*) 'VARIABLES="X","Y","Density","Pressure","Ur","Utheta","U","V"'
     write(unit,'("ZONE I=",I6,", J=",I6,", F=POINT")') &
          (i_hi - i_lo + 1), (j_hi - j_lo + 1)
 
@@ -103,10 +103,31 @@ subroutine write_primitive_tecplot(t, step, output_step, dir, mesh, prim)
     !----------------------------------------
     do j = j_lo, j_hi
         do i = i_lo, i_hi
-            write(unit,'(6E20.10)')  &
-                mesh%x_center(i,j), mesh%y_center(i,j), &
-                prim%density(i,j), prim%pressure(i,j), &
-                prim%velocity_u(i,j), prim%velocity_v(i,j)
+
+            select case(mesh%params%equation_type)
+
+            case (EQ%CARTESIAN_TRANSFORM)
+                write(unit,'(8ES26.18)')  &
+                    mesh%x_center(i,j), mesh%y_center(i,j), &
+                    prim%density(i,j), prim%pressure(i,j), &
+                      prim%velocity_u(i,j)*cos(mesh%theta_center(j)) + prim%velocity_v(i,j)*sin(mesh%theta_center(j)), &
+                    - prim%velocity_u(i,j)*sin(mesh%theta_center(j)) + prim%velocity_v(i,j)*cos(mesh%theta_center(j)), &
+                    prim%velocity_u(i,j), prim%velocity_v(i,j)
+
+            case (EQ%POLAR_EULER)
+                write(unit,'(8ES26.18)')  &
+                    mesh%x_center(i,j), mesh%y_center(i,j), &
+                    prim%density(i,j), prim%pressure(i,j), &
+                    prim%velocity_u(i,j), prim%velocity_v(i,j), &
+                    prim%velocity_u(i,j)*cos(mesh%theta_center(j)) - prim%velocity_v(i,j)*sin(mesh%theta_center(j)), &
+                    prim%velocity_u(i,j)*sin(mesh%theta_center(j)) + prim%velocity_v(i,j)*cos(mesh%theta_center(j))
+
+            case default
+                print *, "ERROR: Unknown equation type in compute_all_fluxes"
+                stop
+
+            end select
+
         end do
     end do
 
@@ -123,6 +144,7 @@ subroutine write_primitive_tecplot(t, step, output_step, dir, mesh, prim)
 end subroutine write_primitive_tecplot
 
 
+
 subroutine print_time_info(step, t, dt)
     implicit none
     integer,          intent(in) :: step
@@ -132,6 +154,7 @@ subroutine print_time_info(step, t, dt)
           "Step=", step, " | t=", t, " | dt=", dt
 
 end subroutine print_time_info
+
 
 
 

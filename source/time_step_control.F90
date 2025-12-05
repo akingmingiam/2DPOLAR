@@ -16,7 +16,7 @@ contains
 !      Compute global CFL time step for a single-phase flow using a
 !      volume-based formula:
 !
-!          dt_cfl = CFL * min_{i,j} [ cbrt(V_ij) / (|u_ij| + c_ij) ]
+!          dt_cfl = CFL * min_{i,j} [ sqrt(V_ij) / (|u_ij| + c_ij) ]
 !
 !  Arguments:
 !      mesh    : [in]  polar mesh (geometry + index ranges + cell_area)
@@ -27,7 +27,7 @@ contains
 !
 !===============================================================================
 
-function compute_global_timestep(mesh, prim, gas, CFL, dt_max, dt_min) result(dt)
+function compute_global_timestep_cartesian(mesh, prim, gas, CFL, dt_max, dt_min) result(dt)
     type(PolarMesh),          intent(in) :: mesh
     type(PrimitiveVariables), intent(in) :: prim
     type(StiffenedGas),       intent(in) :: gas
@@ -100,6 +100,57 @@ function compute_global_timestep(mesh, prim, gas, CFL, dt_max, dt_min) result(dt
     ! Return dt with safety lower bound
     !-------------------------------------------------------------
     dt = max(dt_min, dt_cfl)
+end function compute_global_timestep_cartesian
+
+
+function compute_global_timestep(mesh, prim, gas, CFL, dt_max, dt_min) result(dt)
+    type(PolarMesh),          intent(in) :: mesh
+    type(PrimitiveVariables), intent(in) :: prim
+    type(StiffenedGas),       intent(in) :: gas
+    double precision,         intent(in) :: CFL, dt_max, dt_min
+    double precision :: dt
+
+    integer :: i, j, i_lo, i_hi, j_lo, j_hi
+    double precision :: rho, p, ur, uth, c_sound
+    double precision :: dr, dtheta, r, dl_r, dl_th
+    double precision :: a_r, a_th, dt_cell
+    double precision, parameter :: tiny = 1.0d-14
+
+    i_lo = mesh%params%i_lo_phys
+    i_hi = mesh%params%i_hi_phys
+    j_lo = mesh%params%j_lo_phys
+    j_hi = mesh%params%j_hi_phys
+
+    dt = dt_max
+
+    do j = j_lo, j_hi
+        do i = i_lo, i_hi
+
+            rho = prim%density(i,j)
+            p   = prim%pressure(i,j)
+            ur  = prim%velocity_u(i,j)   ! u_r
+            uth = prim%velocity_v(i,j)   ! u_θ
+            c_sound = sound_speed_stiffened(rho, p, gas)
+
+            dr     = mesh%radial_spacing(i)
+            dtheta = mesh%angular_spacing(j)
+            r      = mesh%r_center(i)
+
+            dl_r  = dr
+            dl_th = max(r * dtheta, tiny)
+
+            a_r  = abs(ur)  + c_sound
+            a_th = abs(uth) + c_sound
+
+            if (a_r > tiny)  dt_cell = CFL * dl_r  / a_r
+            if (a_th > tiny) dt_cell = min(dt_cell, CFL * dl_th / a_th)
+
+            if (dt_cell < dt) dt = dt_cell
+
+        end do
+    end do
+
+    dt = max(dt_min, min(dt, dt_max))
 end function compute_global_timestep
 
 end module time_step_control

@@ -1,5 +1,5 @@
 module mesh_ops
-    use mesh_types,     only : PolarMesh, TimeControlParameters, pi, BC, allocate_mesh_arrays
+    use mesh_types,     only : pi, PolarMesh, TimeControlParameters, BC, EQ, allocate_mesh_arrays
     use flow_fields,    only : PrimitiveVariables, ConservedVariables, allocate_primitive_fields, allocate_conserved_fields
     implicit none
 contains
@@ -23,21 +23,23 @@ subroutine mesh_setup(mesh, time, prim, cons)
     !---------------------------------------------------------------
     ! Assign mesh parameters (fixed, not modifiable externally)
     !---------------------------------------------------------------
-    mesh%params%n_r         = 64
-    mesh%params%n_theta     = 32
+    mesh%params%n_r         = 50
+    mesh%params%n_theta     = 100
     mesh%params%guard_cells = 1
     mesh%params%r_min       = 0.0d0
-    mesh%params%r_max       = 2.0d0 * pi / mesh%params%n_theta * mesh%params%n_r
+    mesh%params%r_max       = 2.0d0
     mesh%params%theta_min   = 0.0d0
     mesh%params%theta_max   = 2.0d0 * pi
 
     !---------------------------------------------------------------
-    ! Assign boundary condition types (named constants)
+    ! Assign boundary condition types & equation type
     !---------------------------------------------------------------
-    mesh%params%bc_r_lo      = BC%AXIS         ! inner wall: r = 0
-    mesh%params%bc_r_hi      = BC%EXTRAPOL     ! outer wall: extrapolated
-    mesh%params%bc_theta_lo  = BC%PERIODIC     ! periodic in θ
-    mesh%params%bc_theta_hi  = BC%PERIODIC
+    mesh%params%equation_type = EQ%POLAR_EULER
+
+    mesh%params%bc_r_lo       = BC%AXIS         ! inner wall: r = 0
+    mesh%params%bc_r_hi       = BC%EXTRAPOL     ! outer wall: extrapolated
+    mesh%params%bc_theta_lo   = BC%PERIODIC
+    mesh%params%bc_theta_hi   = BC%PERIODIC
 
     !---------------------------------------------------------------
     ! Derive index ranges (for physical / computational domains)
@@ -57,17 +59,17 @@ subroutine mesh_setup(mesh, time, prim, cons)
     !---------------------------------------------------------------
     time%CFL               = 0.4d0
     time%t                 = 0.0d0
-    time%t_end             = 0.01d0
+    time%t_end             = 4.0d0
     time%dt                = 1.0d0  
     time%dt_max            = 1.0d0     
     time%dt_min            = 1.d-14 
     time%step              = 0
-    time%max_steps         = 100
+    time%max_steps         = 2000
     time%output_step       = 0
-    time%max_output_steps  = 10
+    time%max_output_steps  = 100
     if (allocated(time%time_outputs)) deallocate(time%time_outputs)
     allocate(time%time_outputs(0:time%max_output_steps))
-    dt_out = (time%t - time%t_end) / dble(time%max_output_steps)
+    dt_out = (time%t_end - time%t) / dble(time%max_output_steps)
     do i = 0, time%max_output_steps
         time%time_outputs(i) = time%t + i * dt_out
     end do

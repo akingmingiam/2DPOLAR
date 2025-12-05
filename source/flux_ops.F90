@@ -10,7 +10,7 @@
 !   - compute_all_fluxes     : convenience wrapper
 !===========================================================
 module flux_ops
-    use mesh_types,       only : PolarMesh, pi
+    use mesh_types,       only : pi, PolarMesh, EQ
     use flow_fields,      only : PrimitiveVariables, ConservedVariables
     use fluid_properties, only : StiffenedGas
     use flux_types,       only : FluxFields
@@ -18,9 +18,6 @@ module flux_ops
 
     implicit none
     private
-
-    public :: compute_radial_fluxes
-    public :: compute_angular_fluxes
     public :: compute_all_fluxes
 
 contains
@@ -34,21 +31,32 @@ contains
         type(StiffenedGas),       intent(in)    :: gas
         type(FluxFields),         intent(inout) :: flux
 
-        call compute_radial_fluxes(mesh, prim, gas, flux)
-        call compute_angular_fluxes(mesh, prim, gas, flux)
+        select case(mesh%params%equation_type)
+
+        case (EQ%CARTESIAN_TRANSFORM)
+            call compute_radial_fluxes_metric (mesh, prim, gas, flux)
+            call compute_angular_fluxes_metric(mesh, prim, gas, flux)
+
+        case (EQ%POLAR_EULER)
+            call compute_radial_fluxes_polar (mesh, prim, gas, flux)
+            call compute_angular_fluxes_polar(mesh, prim, gas, flux)
+
+        case default
+            print *, "ERROR: Unknown equation type in compute_all_fluxes"
+            stop
+
+        end select
+
     end subroutine compute_all_fluxes
-
-
+    
     !-----------------------------------------------------------
-    !  Radial fluxes: faces normal to e_r
-    !
+    !  Compute numerical fluxes for the metric-form Euler equations.
+    !  Fluxes already include all metric coefficients (J, ξ_x, ξ_y, etc.)
     !  Indexing:
     !    i = i_lo_phys ... i_hi_phys+1    (faces)
     !    j = j_lo_phys ... j_hi_phys      (cells in theta)
-    !
-    !  Left state at face (i-1,j), right state at (i,j).
     !-----------------------------------------------------------
-    subroutine compute_radial_fluxes(mesh, prim, gas, flux)
+    subroutine compute_radial_fluxes_metric(mesh, prim, gas, flux)
         type(PolarMesh),          intent(in)    :: mesh
         type(PrimitiveVariables), intent(in)    :: prim
         type(StiffenedGas),       intent(in)    :: gas
@@ -71,11 +79,9 @@ contains
             do i = iL, iR+1
                 ! left cell:  (i-1, j)
                 ! right cell: (i,   j)
-                ! dy_dtheta = (mesh%y_ll(i,j+1) - mesh%y_ll(i,j)) / mesh%angular_spacing(j)
-                ! dx_dtheta = (mesh%x_ll(i,j+1) - mesh%x_ll(i,j)) / mesh%angular_spacing(j)
                 dy_dtheta = (mesh%y_ll(i,j+1) - mesh%y_ll(i,j))
                 dx_dtheta = (mesh%x_ll(i,j+1) - mesh%x_ll(i,j))
-                magnitude = sqrt( dx_dtheta**2 + dy_dtheta**2 )
+                magnitude = dsqrt( dx_dtheta**2.d0 + dy_dtheta**2.d0 )
                 if (magnitude < 1.0d-12) then
                     nx = 0.0d0
                     ny = 0.0d0
@@ -96,6 +102,7 @@ contains
 
                 call hll_flux_solver(rhoL,uL,vL,pL, rhoR,uR,vR,pR, nx,ny, gas, &
                                      fmass, fmom_u, fmom_v, fenergy)
+
                 ! multiply by face length
                 flux%radial%mass(i,j)   = fmass   * magnitude
                 flux%radial%mom_u(i,j)  = fmom_u  * magnitude
@@ -105,21 +112,9 @@ contains
             end do
         end do
 
-    end subroutine compute_radial_fluxes
+    end subroutine compute_radial_fluxes_metric
 
-
-    !-----------------------------------------------------------
-    !  Angular fluxes: faces normal to e_theta
-    !
-    !  Indexing:
-    !    i = i_lo_phys ... i_hi_phys      (cells in r)
-    !    j = j_lo_phys ... j_hi_phys+1    (faces)
-    !
-    !  Left state at face (i, j-1), right state at (i, j).
-    !
-    !  e_theta = (-sin θ, cos θ), with θ ≈ (θ_center(j-1)+θ_center(j))/2
-    !-----------------------------------------------------------
-    subroutine compute_angular_fluxes(mesh, prim, gas, flux)
+    subroutine compute_angular_fluxes_metric(mesh, prim, gas, flux)
         type(PolarMesh),          intent(in)    :: mesh
         type(PrimitiveVariables), intent(in)    :: prim
         type(StiffenedGas),       intent(in)    :: gas
@@ -143,11 +138,9 @@ contains
                 ! left cell:  (i, j-1)
                 ! right cell: (i, j)
 
-                ! dy_dr = (mesh%y_ll(i+1,j) - mesh%y_ll(i,j)) / mesh%radial_spacing(i)
-                ! dx_dr = (mesh%x_ll(i+1,j) - mesh%x_ll(i,j)) / mesh%radial_spacing(i)
                 dy_dr = (mesh%y_ll(i+1,j) - mesh%y_ll(i,j))
                 dx_dr = (mesh%x_ll(i+1,j) - mesh%x_ll(i,j))
-                magnitude = sqrt( dy_dr**2 + dx_dr**2 )
+                magnitude = dsqrt( dy_dr**2.d0 + dx_dr**2.d0 )
                 nx =  -dy_dr / magnitude
                 ny =   dx_dr / magnitude
 
@@ -169,13 +162,19 @@ contains
                 flux%angular%mom_u(i,j)  = fmom_u  * magnitude
                 flux%angular%mom_v(i,j)  = fmom_v  * magnitude
                 flux%angular%energy(i,j) = fenergy * magnitude
+
             end do
         end do
-    end subroutine compute_angular_fluxes
+    end subroutine compute_angular_fluxes_metric
 
 
-    ! 没有特殊处理metric
-    subroutine compute_radial_fluxes0(mesh, prim, gas, flux)
+    
+    !===============================================================
+    !  Compute radial numerical fluxes for Polar Euler equations (explicit geometric sources)
+    !  Returns *physical* fluxes F_r and F_θ.
+    !  Does not include geometric source terms; they are added separately.
+    !===============================================================
+    subroutine compute_radial_fluxes_polar(mesh, prim, gas, flux)
         type(PolarMesh),          intent(in)    :: mesh
         type(PrimitiveVariables), intent(in)    :: prim
         type(StiffenedGas),       intent(in)    :: gas
@@ -183,7 +182,7 @@ contains
 
         integer :: i, j
         integer :: iL, iR, jL, jR
-        double precision :: theta, nx, ny
+        double precision :: nx, ny
         double precision :: rhoL,uL,vL,pL
         double precision :: rhoR,uR,vR,pR
         double precision :: fmass, fmom_u, fmom_v, fenergy
@@ -195,9 +194,10 @@ contains
 
         do j = jL, jR
             do i = iL, iR+1
-                theta = mesh%theta_center(j)
-                nx = cos(theta)
-                ny = sin(theta)
+                ! left cell:  (i-1, j)
+                ! right cell: (i  , j)
+                nx = 1.0d0
+                ny = 0.0d0
 
                 rhoL = prim%density(   i-1, j)
                 uL   = prim%velocity_u(i-1, j)
@@ -216,13 +216,12 @@ contains
                 flux%radial%mom_u(i,j)  = fmom_u  * mesh%radial_face_length(i,j)
                 flux%radial%mom_v(i,j)  = fmom_v  * mesh%radial_face_length(i,j)
                 flux%radial%energy(i,j) = fenergy * mesh%radial_face_length(i,j)
-                
+            
             end do
         end do
-    end subroutine compute_radial_fluxes0
+    end subroutine compute_radial_fluxes_polar
 
-
-    subroutine compute_angular_fluxes0(mesh, prim, gas, flux)
+    subroutine compute_angular_fluxes_polar(mesh, prim, gas, flux)
         type(PolarMesh),          intent(in)    :: mesh
         type(PrimitiveVariables), intent(in)    :: prim
         type(StiffenedGas),       intent(in)    :: gas
@@ -230,7 +229,7 @@ contains
 
         integer :: i, j
         integer :: iL, iR, jL, jR
-        double precision :: nx, ny, theta
+        double precision :: nx, ny
         double precision :: rhoL,uL,vL,pL
         double precision :: rhoR,uR,vR,pR
         double precision :: fmass, fmom_u, fmom_v, fenergy
@@ -244,10 +243,8 @@ contains
             do i = iL, iR
                 ! left cell:  (i, j-1)
                 ! right cell: (i, j)
-
-                theta = mesh%theta_face(j)
-                nx = -sin(theta)
-                ny =  cos(theta)
+                nx = 0.0d0
+                ny = 1.0d0
 
                 rhoL = prim%density(   i, j-1)
                 uL   = prim%velocity_u(i, j-1)
@@ -269,6 +266,6 @@ contains
                 flux%angular%energy(i,j) = fenergy * mesh%angular_face_length(i,j)
             end do
         end do
-    end subroutine compute_angular_fluxes0
+    end subroutine compute_angular_fluxes_polar
 
 end module flux_ops

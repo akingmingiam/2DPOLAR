@@ -90,25 +90,36 @@ contains
                 rho_v = cons%rho_v(i,j)
                 rho_E = cons%rho_E(i,j)
 
-                if (rho <= tiny_rho) then
-                    prim%density(i,j)    = tiny_rho
-                    prim%velocity_u(i,j) = 0d0
-                    prim%velocity_v(i,j) = 0d0
-                    prim%pressure(i,j)   = 0d0
-                else
-                    u  = rho_u / rho
-                    v  = rho_v / rho
-                    v2 = u*u + v*v
+                ! if (rho <= tiny_rho) then
+                !     prim%density(i,j)    = tiny_rho
+                !     prim%velocity_u(i,j) = 0d0
+                !     prim%velocity_v(i,j) = 0d0
+                !     prim%pressure(i,j)   = 0d0
+                ! else
+                !     u  = rho_u / rho
+                !     v  = rho_v / rho
+                !     v2 = u*u + v*v
 
-                    p = (gas%gamma - 1d0)*( rho_E - 0.5d0*rho*v2 ) &
-                        - gas%gamma*gas%p_inf
-                    p = apply_pressure_floor(p, gas)
+                !     p = (gas%gamma - 1d0)*( rho_E - 0.5d0*rho*v2 ) &
+                !         - gas%gamma*gas%p_inf
+                !     p = apply_pressure_floor(p, gas)
 
-                    prim%density(i,j)    = rho
-                    prim%velocity_u(i,j) = u
-                    prim%velocity_v(i,j) = v
-                    prim%pressure(i,j)   = p
-                end if
+                !     prim%density(i,j)    = rho
+                !     prim%velocity_u(i,j) = u
+                !     prim%velocity_v(i,j) = v
+                !     prim%pressure(i,j)   = p
+                ! end if
+
+                u  = rho_u / rho
+                v  = rho_v / rho
+                v2 = u*u + v*v
+
+                p = (gas%gamma - 1d0)*( rho_E - 0.5d0*rho*v2 ) &
+                    - gas%gamma*gas%p_inf
+                prim%density(i,j)    = rho
+                prim%velocity_u(i,j) = u
+                prim%velocity_v(i,j) = v
+                prim%pressure(i,j)   = p
 
             end do
         end do

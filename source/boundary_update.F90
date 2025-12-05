@@ -14,8 +14,9 @@ module boundary_update
     !              j = j_hi_phys+1 ... j_hi_phys+g   (upper theta ghost)
     !======================================================================
 
-    use mesh_types,   only : PolarMesh, BC
-    use flow_fields,  only : PrimitiveVariables, ConservedVariables
+    use mesh_types,       only : PolarMesh, BC
+    use flow_fields,      only : PrimitiveVariables, ConservedVariables
+    use fluid_properties, only : StiffenedGas, specific_total_energy_stiffened
     implicit none
     private
 
@@ -29,10 +30,11 @@ contains
 !              variables. Extracts all needed info from `mesh%params`
 !              and dispatches to directional BC handlers.
 !==================================================================
-subroutine update_boundary_primitive_conserved(mesh, prim, cons)
+subroutine update_boundary_primitive_conserved(mesh, prim, cons, gas)
     type(PolarMesh),          intent(in)    :: mesh
     type(PrimitiveVariables), intent(inout) :: prim
     type(ConservedVariables), intent(inout) :: cons
+    type(StiffenedGas),       intent(in)    :: gas
 
     integer :: g
     integer :: i_lo_phys, i_hi_phys
@@ -59,7 +61,7 @@ subroutine update_boundary_primitive_conserved(mesh, prim, cons)
     ! Radial and angular BC application
     !-------------------------------------------
     call apply_bc_r(prim, cons, g, i_lo_phys, i_hi_phys, j_lo_phys, j_hi_phys, &
-                    bc_r_lo, bc_r_hi)
+                    bc_r_lo, bc_r_hi, gas)
 
     call apply_bc_theta(prim, cons, g, i_lo_phys, i_hi_phys, j_lo_phys, j_hi_phys, &
                         bc_t_lo, bc_t_hi)
@@ -82,9 +84,11 @@ end subroutine update_boundary_primitive_conserved
 !      bc_hi       : BC type on outer radius
 !==================================================================
 subroutine apply_bc_r(prim, cons, g, i_lo_phys, i_hi_phys, j_lo_phys, j_hi_phys, &
-                      bc_lo, bc_hi)
+                      bc_lo, bc_hi, gas)
     type(PrimitiveVariables), intent(inout) :: prim
     type(ConservedVariables), intent(inout) :: cons
+    type(StiffenedGas),       intent(in)    :: gas
+
     integer, intent(in) :: g
     integer, intent(in) :: i_lo_phys, i_hi_phys
     integer, intent(in) :: j_lo_phys, j_hi_phys
@@ -135,18 +139,17 @@ subroutine apply_bc_r(prim, cons, g, i_lo_phys, i_hi_phys, j_lo_phys, j_hi_phys,
         end do
 
     case (BC%AXIS)
-        ! r = 0
-        do j = j_lo_phys, j_hi_phys
+         do j = j_lo_phys, j_hi_phys
             do k = 1, g
                 ig = i_lo_phys - k
                 ii = i_lo_phys
                 prim%density(   ig,j) = prim%density(   ii,j)
                 prim%pressure(  ig,j) = prim%pressure(  ii,j)
-                prim%velocity_u(ig,j) = prim%velocity_u(ii,j)
+                prim%velocity_u(ig,j) = -prim%velocity_u(ii,j)
                 prim%velocity_v(ig,j) = prim%velocity_v(ii,j)
 
                 cons%rho(  ig,j) = cons%rho(  ii,j)
-                cons%rho_u(ig,j) = cons%rho_u(ii,j)
+                cons%rho_u(ig,j) = -cons%rho_u(ii,j)
                 cons%rho_v(ig,j) = cons%rho_v(ii,j)
                 cons%rho_E(ig,j) = cons%rho_E(ii,j)
             end do
