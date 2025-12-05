@@ -24,14 +24,29 @@ Tecplot-style snapshots under `result/` every 20 steps by default.
 * `PolarGridParameters` bundles grid resolution, guard-cell count, radial
   and angular bounds, equation type (Cartesian transform vs. polar
   Euler), and boundary-condition selectors. It also precomputes index
-  ranges for physical and computational domains.【F:header/mesh_types.F90†L24-L77】
+  ranges for physical (`i_lo_phys..i_hi_phys`, `j_lo_phys..j_hi_phys`) and
+  computational (`i_lo_comp..i_hi_comp`, `j_lo_comp..j_hi_comp`) domains.【F:header/mesh_types.F90†L24-L77】
 * `TimeControlParameters` records CFL settings, time bounds, timestep
   limits, counters, and user-requested output times.【F:header/mesh_types.F90†L79-L97】
-* `PolarMesh` stores the geometric arrays (cell centers, face locations,
-  spacings, face lengths, cell areas, Cartesian coordinates) allocated on
-  index ranges that include ghost layers.【F:header/mesh_types.F90†L104-L152】 The
-  helper `allocate_mesh_arrays`/`deallocate_mesh_arrays` routines size all
-  geometry arrays based on the configured resolution and guard cells.【F:header/mesh_types.F90†L158-L201】
+* `PolarMesh` stores the complete geometric description used by the
+  solver, all allocated with ghost cells:
+  * `params`: copy of the above grid metadata.
+  * `r_center`, `theta_center`: 1D arrays of cell-center radial/azimuthal
+    coordinates for each index including ghost layers.
+  * `r_centroid`, `theta_centroid`: 1D centroids consistent with the
+    control-volume geometry (identical to centers for uniform grids).
+  * `r_face`, `theta_face`: face locations at half indices (`i-1/2`,
+    `j-1/2`).
+  * `radial_spacing`, `angular_spacing`: grid spacing Δr and Δθ at each
+    index.
+  * `cell_area`: control-volume area rΔrΔθ for each `(i, j)` cell.
+  * `x_center`, `y_center`: Cartesian coordinates of every cell center.
+  * `radial_face_length`, `angular_face_length`: face lengths rΔθ for
+    radial faces and Δr for angular faces.
+  * `x_ll`, `y_ll`: Cartesian coordinates of the lower-left face corner
+    (`i-1/2`, `j-1/2`), used for Tecplot output alignment.【F:header/mesh_types.F90†L104-L152】
+  The helper `allocate_mesh_arrays`/`deallocate_mesh_arrays` routines size
+  all geometry arrays based on the configured resolution and guard cells.【F:header/mesh_types.F90†L158-L201】
 
 ### Flow fields (`flow_fields`)
 * `PrimitiveVariables` holds the cell-centered primitive state `(ρ, p, u,
