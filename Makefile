@@ -42,4 +42,3 @@ $(BUILD_DIR)/%.o: %.F90 | $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR) main
-
