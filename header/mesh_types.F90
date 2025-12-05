@@ -7,7 +7,7 @@ module mesh_types
     public :: TimeControlParameters
     public :: PolarMesh
     public :: allocate_mesh_arrays
-    public :: BC
+    public :: BC, EQ
 
     !=======================================================================
     !  Mathematical constants
@@ -16,7 +16,7 @@ module mesh_types
     real(kind=8), parameter :: pi = acos(-1.0d0)
 
     !=======================================================================
-    !  Boundary condition
+    !  Boundary condition, Equation type
     !=======================================================================
     type :: BoundaryConditionTypes
         integer :: SYMMETRY  = 1   ! reflective wall
@@ -24,7 +24,15 @@ module mesh_types
         integer :: PERIODIC  = 3   ! periodic
         integer :: AXIS      = 4   ! r = 0 axis
     end type BoundaryConditionTypes
+
+    type :: EquationSystemTypes
+        integer :: CARTESIAN_TRANSFORM = 1   ! Cartesian Euler + mapping (no geometric sources)
+        integer :: POLAR_EULER         = 2   ! Polar Euler equations (explicit geometric sources)
+    end type EquationSystemTypes
+
     type(BoundaryConditionTypes), parameter :: BC = BoundaryConditionTypes()
+    type(EquationSystemTypes),    parameter :: EQ = EquationSystemTypes()
+
      
     !=======================================================================
     !  Type: PolarGridParameters
@@ -34,32 +42,27 @@ module mesh_types
     !=======================================================================
     type :: PolarGridParameters
 
-        !---------------------------
+        ! Equation type
+        integer :: equation_type
+
         ! Grid resolution
-        !---------------------------
         integer :: n_r          ! Number of radial cells (physical domain)
         integer :: n_theta      ! Number of angular cells (physical domain)
         integer :: guard_cells  ! Number of ghost cells on each side
 
-        !---------------------------
         ! Physical domain extents
-        !---------------------------
         double precision :: r_min      ! Inner radius  (m)
         double precision :: r_max      ! Outer radius  (m)
         double precision :: theta_min  ! Minimum angle (rad)
         double precision :: theta_max  ! Maximum angle (rad)
 
-        !---------------------------
         ! Boundary condition types
-        !---------------------------
         integer :: bc_r_lo      ! Type of boundary at r = r_min
         integer :: bc_r_hi      ! Type of boundary at r = r_max
         integer :: bc_theta_lo  ! Type of boundary at theta = theta_min
         integer :: bc_theta_hi  ! Type of boundary at theta = theta_max
 
-        !---------------------------
         ! Index ranges (for convenience)
-        !---------------------------
         ! Physical domain indices
         integer :: i_lo_phys, i_hi_phys
         integer :: j_lo_phys, j_hi_phys
